@@ -32,3 +32,9 @@ def save_lexicon(lexicon, path):
     with open(path, "w", encoding="utf-8") as f:
         #Writing the dictionary/lexicon as json text in file.
         json.dump(lexicon, f)
+
+#Loading the lexicon for reading purposes.
+def load_lexicon(path):
+    with open(path, "r", encoding="utf-8") as f:
+        #Reads the json text and rebuilds the dictionary(lexicon).
+        return json.load(f)
