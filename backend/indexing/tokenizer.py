@@ -6,6 +6,11 @@ import html
 import re
 import unicodedata
 
+#Defining the max length of a token.
+# Tokens longer than this are junk (glued sentences, crypto hashes, stretched words).
+# 25 chosen from the data, only 127 of 139k words exceeded it, all junk. This was tried and tested first.
+MAX_TOKEN_LENGTH = 25
+
 # Replace lookalike characters: curly quotes -> straight, dashes and ellipsis -> space
 # Text u2019 - u2026 are unicodes for special characters
 CHAR_TABLE = str.maketrans({
@@ -42,6 +47,8 @@ def tokenize(text):
         if word.endswith("'s"):         # sofya's -> sofya
             word = word[:-2]
         if len(word) == 1 and not word.isdigit():   # drop single letters, keep single digits
+            continue
+        if len(word) > MAX_TOKEN_LENGTH:  # Skip junk like "0x848d..." or sentences with no spaces
             continue
         if word:
             tokens.append(word)
