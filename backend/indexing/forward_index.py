@@ -6,6 +6,8 @@
 
 from tokenizer import tokenize
 from collections import Counter
+import os
+import json
 
 def index_document(title,body,lexicon):
     #Tokenizing the title and body separately and storing the words in a list.
@@ -53,9 +55,40 @@ def build_forward_index(df,lexicon): #df(dataframe) is the table of games.
         doc_word_counts = index_document(title,body,lexicon)
 
         #Using the app id as the key and storing info in the forward index.
-        forward_index[app_id] = doc_word_counts
+        #Converting app_id from a numpy integer (pandas type) to a normal Python integer, so that json can always save it as a key on any machine or library version.
+        forward_index[int(app_id)] = doc_word_counts
 
     return forward_index 
+
+def save_forward_index(forward_index, path):
+    #Getting only the folder part from the part for os.makedirs function to make the folder.
+    folder = os.path.dirname(path)
+    #Checking if the path contains the folder or not as the program will crash if no folder exists.
+    if folder:
+        os.makedirs(folder, exist_ok=True)
+    #Opening the file for wrirting purposes and naming it f.
+    with open(path, "w", encoding="utf-8") as f:
+        #Writing the forward index as json text in file.
+            json.dump(forward_index, f)
+
+def load_forward_index(path):
+    with open(path, "r", encoding="utf-8") as f:
+        #Reads the json text and stores it a temp variable 'raw'.
+        #All keys in raw are string at this point.
+        raw = json.load(f)
+    #Creating a forward index that'll store the converted version.
+    forward_index = {}
+    #Looping over raws to get each game's app id and it's inner dictionary.
+    for app_id, words in raw.items():
+        #Converting the inner keys (word ids - strings after json load) back to integers. The values [title_count, body_count] are numbers already, so they are kept as they are.
+        converted = {int(word_id): counts for word_id, counts in words.items()}
+        #Converts the outer key (string) to integer and stores the inner dictionary.
+        forward_index[int(app_id)] = converted
+    return forward_index
+        
+     
+
+
 
 
 
