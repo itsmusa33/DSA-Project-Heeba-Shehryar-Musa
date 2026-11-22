@@ -30,17 +30,25 @@ TOKEN_RE = re.compile(r"[a-z0-9]+(?:'[a-z0-9]+)*")  # a word: letters/digits, ap
 def tokenize(text):
     if not isinstance(text, str):
         return []
+    
+    #Entities like &amp; always contain an ampersand, so the call is skipped for text that has none.
+    if "&" in text:
+        text = html.unescape(text)
+    #Tags always contain a "<", so the regex is skipped for text that has none.
+    if "<" in text:
+        text = TAG_RE.sub(" ", text)
+    #URLs start with http or www, so the regex is skipped for text that has neithe
+    if "http" in text or "www" in text:
+        text = URL_RE.sub(" ", text)
 
-    text = html.unescape(text)          # &amp; -> &, &#8217; -> curly quote
-    text = TAG_RE.sub(" ", text)        # remove tags
-    text = URL_RE.sub(" ", text)        # remove URLs
     text = text.translate(CHAR_TABLE)   # curly quotes, dashes, ellipsis
     text = text.lower()
 
     # Split accented letters into letter + accent mark, then drop every
     # non-ASCII character. "pokémon" -> "pokemon". Non-Latin scripts vanish.
-    text = unicodedata.normalize("NFD", text)
-    text = text.encode("ascii", "ignore").decode("ascii")
+    if not text.isascii():
+        text = unicodedata.normalize("NFD", text)
+        text = text.encode("ascii", "ignore").decode("ascii")
 
     tokens = []
     for word in TOKEN_RE.findall(text):
