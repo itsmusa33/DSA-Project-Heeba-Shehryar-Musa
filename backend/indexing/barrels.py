@@ -4,7 +4,7 @@
 
 #n_barrels is the number of barrels
 #We will be using 32 as n_barrels for now
-def spilt_into_barrels(inverted_index, n_barrels):
+def split_into_barrels(inverted_index, n_barrels):
     #Making a list "barrels" and each position in the list will refer to a barrel.
     #Making n_barrels separate empty dictionaries, one for each barrel, before any word is placed.
     barrels = [{} for _ in range(n_barrels)]
