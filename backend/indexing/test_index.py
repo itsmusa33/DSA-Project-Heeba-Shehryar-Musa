@@ -14,8 +14,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from tokenizer import tokenize
 from lexicon import build_lexicon, save_lexicon, load_lexicon
-from forward_index import build_forward_index
-from inverted_index import build_inverted_index
+from forward_index import build_forward_index, save_forward_index, load_forward_index
+from inverted_index import build_inverted_index, save_inverted_index, load_inverted_index
+from build_index import load_games
 
 
 #Four small games with known text
@@ -99,6 +100,109 @@ def test_lexicon_round_trip():
         save_lexicon(lexicon, path)
         assert load_lexicon(path) == lexicon
 
+#------------------ forward index ------------------
+
+def test_forward_index_counts():
+    lexicon, forward_index, _ = make_indexes(make_games())
+    #game 1: "space" is once in the title and twice in the body
+    assert forward_index[1][lexicon["space"]] == [1, 2]
+    #game 2: "pokemon" is only in the title, "sofya" only in the body
+    assert forward_index[2][lexicon["pokemon"]] == [1, 0]
+    assert forward_index[2][lexicon["sofya"]] == [0, 1]
+    #game 3: "quest" is twice in the title and once in the body
+    assert forward_index[3][lexicon["quest"]] == [2, 1]
+
+
+def test_forward_index_ids_exist_in_lexicon():
+    lexicon, forward_index, _ = make_indexes(make_games())
+    valid_ids = set(lexicon.values())
+    for app_id, words in forward_index.items():
+        for word_id in words:
+            assert word_id in valid_ids
+
+
+def test_forward_index_round_trip():
+    lexicon, forward_index, _ = make_indexes(make_games())
+    with tempfile.TemporaryDirectory() as folder:
+        path = os.path.join(folder, "forward_index.json")
+        save_forward_index(forward_index, path)
+        loaded = load_forward_index(path)
+        assert loaded == forward_index
+        #keys must be ints again after loading, json turns them into strings
+        assert all(isinstance(k, int) for k in loaded)
+
+
+def test_forward_index_missing_description():
+    #a game with no description at all should not crash the build
+    df = pd.DataFrame({"app_id": [10], "name": ["Lonely Game"], "short_description": ["Just short"], "description": [None]})
+    lexicon, forward_index, _ = make_indexes(df)
+    assert lexicon["lonely"] in forward_index[10]
+
+
+#------------------ inverted index ------------------
+
+def test_inverted_index_known_word():
+    lexicon, _, inverted_index = make_indexes(make_games())
+    #"game" by hand: game 1 title 1 body 1, game 2 body 1, game 3 title 1, game 4 body 1
+    assert inverted_index[lexicon["game"]] == [[1, 1, 1], [2, 0, 1], [3, 1, 0], [4, 0, 1]]
+
+
+def test_inverted_lists_sorted_and_unique():
+    _, _, inverted_index = make_indexes(make_games())
+    for word_id, postings in inverted_index.items():
+        app_ids = [p[0] for p in postings]
+        assert app_ids == sorted(app_ids)
+        assert len(app_ids) == len(set(app_ids))
+
+
+def test_inverted_matches_forward():
+    _, forward_index, inverted_index = make_indexes(make_games())
+    #every pair in the inverted index must have the same counts as the forward index
+    for word_id, postings in inverted_index.items():
+        for app_id, title_count, body_count in postings:
+            assert forward_index[app_id][word_id] == [title_count, body_count]
+    #and the total number of pairs must be the same in both
+    forward_total = sum(len(words) for words in forward_index.values())
+    inverted_total = sum(len(postings) for postings in inverted_index.values())
+    assert forward_total == inverted_total
+
+
+def test_inverted_index_round_trip():
+    _, _, inverted_index = make_indexes(make_games())
+    with tempfile.TemporaryDirectory() as folder:
+        path = os.path.join(folder, "inverted_index.json")
+        save_inverted_index(inverted_index, path)
+        loaded = load_inverted_index(path)
+        assert loaded == inverted_index
+        assert all(isinstance(k, int) for k in loaded)
+
+
+#------------------ loading the games file ------------------
+
+def test_load_games_cleans_ids():
+    df = pd.DataFrame({
+        "app_id": [1, 1, None, 3],
+        "name": ["a", "b", "c", "d"],
+        "short_description": ["x", "x", "x", "x"],
+        "description": ["y", "y", "y", "y"],
+    })
+    with tempfile.TemporaryDirectory() as folder:
+        path = os.path.join(folder, "games.csv")
+        df.to_csv(path, index=False)
+        cleaned = load_games(path)
+        #the duplicate id 1 and the missing id are gone
+        assert list(cleaned["app_id"]) == [1, 3]
+
+
+def test_load_games_missing_column():
+    with tempfile.TemporaryDirectory() as folder:
+        path = os.path.join(folder, "games.csv")
+        pd.DataFrame({"app_id": [1]}).to_csv(path, index=False)
+        try:
+            load_games(path)
+        except ValueError:
+            return
+        assert False, "expected a ValueError for missing columns"
 #Simple runner so the file also works without pytest
 if __name__ == "__main__":
     failed = 0
