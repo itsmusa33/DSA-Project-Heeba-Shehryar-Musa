@@ -57,3 +57,19 @@ def load_barrel(folder,barrel_number):
     #The values are lists of integers already, so they are kept as they are.
     barrel = {int(word_id): entries for word_id, entries in raw.items()}
     return barrel
+
+def get_postings(word_id, folder):
+    #Building the path of meta.json, which was saved next to the barrel files by save_barrels.
+    meta_path = os.path.join(folder, "meta.json")
+    #Opening it for reading and loading the json text back into a dictionary.
+    with open(meta_path, "r", encoding="utf-8") as f:
+        meta = json.load(f)
+    #Taking the barrel count out of the dictionary. This is the same count that was used to split, so the rule below finds the right barrel.
+    n_barrels = meta["n_barrels"]
+    #Working out the barrel number for the required word.
+    barrel_number = word_id % n_barrels
+    #Loading the required barrel file
+    barrel = load_barrel(folder,barrel_number)
+    #Returning the word's list of entries.
+    #get returns the value if the key exists, and an empty list if it does not, so a word with no postings does not crash the search.
+    return barrel.get(word_id, [])
