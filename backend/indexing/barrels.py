@@ -45,3 +45,15 @@ def save_barrels(barrels,folder):
     with open(meta_path, "w", encoding="utf-8") as f:
         json.dump({"n_barrels": len(barrels)}, f)
 
+def load_barrel(folder,barrel_number):
+    name = f"barrel_{barrel_number}.json"
+    #Joining the folder and the file name into one path, using the right slash for the system.
+    path = os.path.join(folder, name)
+    with open(path, "r", encoding="utf-8") as f:
+    #Reads the json text and stores it a temp variable 'raw'.
+    #raw holds the barrel exactly as it was in the file, so all the word ids (keys) are still strings like "4812".
+        raw = json.load(f)
+    #Converting the word ids (keys) back to integers. 
+    #The values are lists of integers already, so they are kept as they are.
+    barrel = {int(word_id): entries for word_id, entries in raw.items()}
+    return barrel
