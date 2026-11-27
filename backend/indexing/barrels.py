@@ -4,6 +4,21 @@
 
 import os 
 import json
+#OrderedDict is the dict that remembers the order things were added or used.
+from collections import OrderedDict
+
+N_BARRELS = 32
+#Maximum number of barrels kept in memory at once. One barrel is about 39 MB in RAM, so 8 barrels is about 320 MB.
+MAX_CACHED_BARRELS = 8
+
+#Remembering the barrel count of each barrel folder once it has been read from meta.json.
+#Keys are folder paths and values are n_barrels.
+#So the file is read only on the first lookup and not on every call.
+_meta_cache = {}
+
+#Keeping recently used barrels in memory so the same barrel is not parsed from disk again for every word.
+#Keys are (folder, barrel_number) and values are the loaded barrels. OrderedDict remembers the order of use, oldest first.
+_barrel_cache = OrderedDict()
 
 #n_barrels is the number of barrels
 #We will be using 32 as n_barrels for now
@@ -58,18 +73,45 @@ def load_barrel(folder,barrel_number):
     barrel = {int(word_id): entries for word_id, entries in raw.items()}
     return barrel
 
-def get_postings(word_id, folder):
-    #Building the path of meta.json, which was saved next to the barrel files by save_barrels.
+#Returns the number of barrels used to build the barrels in this folder.
+#It reads meta.json only the first time; after that the stored number is reused.
+def get_n_barrels(folder):
+    #If this folder was already read, returning the remembered number without touching the disk.
+    if folder in _meta_cache:
+        return _meta_cache[folder]
+    #First time for this folder: reading meta.json, for example {"n_barrels": 32}.
     meta_path = os.path.join(folder, "meta.json")
-    #Opening it for reading and loading the json text back into a dictionary.
     with open(meta_path, "r", encoding="utf-8") as f:
         meta = json.load(f)
-    #Taking the barrel count out of the dictionary. This is the same count that was used to split, so the rule below finds the right barrel.
-    n_barrels = meta["n_barrels"]
-    #Working out the barrel number for the required word.
-    barrel_number = word_id % n_barrels
-    #Loading the required barrel file
+    #Storing the number so the next call finds it in the cache.
+    _meta_cache[folder] = meta["n_barrels"]
+    return _meta_cache[folder]
+
+#Returns a barrel, loading it from disk only if it is not already in the cache.
+def get_barrel(folder, barrel_number):
+    #The key is a tuple of folder and barrel number, so barrels from different folders never get mixed up.
+    key = (folder, barrel_number)
+    #Cache hit if the barrel is already in memory.
+    #move_to_end marks it as the most recently used, so it goes to the back of the line for eviction.
+    if key in _barrel_cache:
+        _barrel_cache.move_to_end(key)
+        return _barrel_cache[key]
+    #Case for cache miss
+    #Loading the barrel from disk and storing it at the end, as the most recently used.
     barrel = load_barrel(folder,barrel_number)
-    #Returning the word's list of entries.
-    #get returns the value if the key exists, and an empty list if it does not, so a word with no postings does not crash the search.
+    _barrel_cache[key] = barrel
+    #If the cache is over its limit, removing the oldest entry. 
+    #last=False removes from the front, which is the least recently used.
+    if len(_barrel_cache) > MAX_CACHED_BARRELS:
+        _barrel_cache.popitem(last=False)
+    return barrel
+
+def get_postings(word_id, folder):
+    #Getting the barrel count (read from meta.json only once, then cached).
+    n_barrels = get_n_barrels(folder)
+    #Working out which barrel holds this word, using the same modulo rule that was used to split.
+    barrel_number = word_id % n_barrels
+    #Loading only that one barrel file, not the whole inverted index.
+    barrel = get_barrel(folder, barrel_number)
+    #get returns the value if the key exists, and an empty list if it does not.
     return barrel.get(word_id, [])
