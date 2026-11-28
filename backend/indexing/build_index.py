@@ -6,12 +6,12 @@
 import argparse
 import os
 import time
-from itertools import chain
 
 import pandas as pd
 
-from lexicon import build_lexicon, save_lexicon
-from forward_index import build_forward_index, save_forward_index
+from tokenizer import tokenize
+from lexicon import build_lexicon_from_tokens, save_lexicon
+from forward_index import build_forward_index_from_tokens, save_forward_index
 from inverted_index import build_inverted_index, save_inverted_index
 
 REQUIRED_COLUMNS = ["app_id", "name", "short_description", "description"]
@@ -42,6 +42,14 @@ def load_games(path):
     df["app_id"] = df["app_id"].astype("int64")
     return df.reset_index(drop=True)
 
+#Tokenizing every game once. Returns a dictionary of app_id -> (title_tokens, body_tokens).
+#The body is the short description and the description joined with a space.
+def tokenize_games(df):
+    short_descriptions = df["short_description"].fillna("")
+    game_tokens = {}
+    for app_id, name, short, desc in zip(df["app_id"], df["name"].fillna(""), short_descriptions, df["description"].fillna("")):
+        game_tokens[int(app_id)] = (tokenize(name), tokenize(short + " " + desc))
+    return game_tokens
 
 def main():
     parser = argparse.ArgumentParser()
@@ -52,15 +60,19 @@ def main():
     df = load_games(args.input)
     print("Games loaded:", len(df))
 
-    #The lexicon must see exactly the text the forward index will tokenize(title + short description + description)
-    #fillna("") so that missing text does not reach the tokenizer as NaN
+    #Tokenizing every game once; the lexicon and the forward index both use these token lists.
     start = time.time()
-    texts = chain(df["name"].fillna(""), df["short_description"].fillna(""), df["description"].fillna(""))
-    lexicon = build_lexicon(texts)
+    game_tokens = tokenize_games(df)
+    print("Tokenized: %d games (%.2fs)" % (len(game_tokens), time.time() - start))
+
+    #Feeding title and body token lists of every game to the lexicon.
+    start = time.time()
+    token_lists = [tokens for pair in game_tokens.values() for tokens in pair]
+    lexicon = build_lexicon_from_tokens(token_lists)
     print("Lexicon: %d words (%.2fs)" % (len(lexicon), time.time() - start))
 
     start = time.time()
-    forward_index = build_forward_index(df, lexicon)
+    forward_index = build_forward_index_from_tokens(game_tokens, lexicon)
     print("Forward index: %d documents (%.2fs)" % (len(forward_index), time.time() - start))
 
     start = time.time()
